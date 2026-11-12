@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdalign.h>
 
-#define MAX_STR_LEN 19  // 19 chars + 1 null terminator = 20 bytes
-
+// 1. Basic Union and Structure Definitions
 typedef union {
     int i;
     float f;
@@ -17,12 +17,12 @@ typedef struct {
     char str[20];
 } StructData;
 
-// Tagged Union to ensure safe access to active members
+// 2. Tagged Record Definitions for Safe Access
 typedef enum {
     VALUE_INT,
     VALUE_FLOAT,
     VALUE_TEXT,
-    VALUE_EMPTY
+    VALUE_INVALID = -1
 } ValueType;
 
 typedef struct {
@@ -30,117 +30,138 @@ typedef struct {
     ValueType type;
 } TaggedRecord;
 
-// Function prototypes for safe tagged record operations
-void set_int_record(TaggedRecord *record, int val);
-void set_float_record(TaggedRecord *record, float val);
-int set_text_record(TaggedRecord *record, const char *text);
-void display_tagged_record(const TaggedRecord *record, int index);
-void print_memory_analysis();
-
-// Safe mutators
-void set_int_record(TaggedRecord *record, int val) {
-    record->data.i = val;
-    record->type = VALUE_INT;
+// Validated setters
+void set_int(TaggedRecord *rec, int val) {
+    if (!rec) return;
+    rec->data.i = val;
+    rec->type = VALUE_INT;
 }
 
-void set_float_record(TaggedRecord *record, float val) {
-    record->data.f = val;
-    record->type = VALUE_FLOAT;
+void set_float(TaggedRecord *rec, float val) {
+    if (!rec) return;
+    rec->data.f = val;
+    rec->type = VALUE_FLOAT;
 }
 
-int set_text_record(TaggedRecord *record, const char *text) {
-    if (strlen(text) > MAX_STR_LEN) {
-        printf("[Error] String exceeds maximum allowed length of %d characters.\n", MAX_STR_LEN);
-        return 0;
+int set_text(TaggedRecord *rec, const char *val) {
+    if (!rec || !val) return -1;
+    size_t len = strlen(val);
+    if (len >= sizeof(rec->data.str)) {
+        printf("  [Edge Case Warning] String rejected: length %zu exceeds buffer limit (%zu max including null terminator).\n", 
+               len, sizeof(rec->data.str));
+        return -1;
     }
-    strncpy(record->data.str, text, sizeof(record->data.str));
-    record->data.str[sizeof(record->data.str) - 1] = '\0'; // Ensure null-termination
-    record->type = VALUE_TEXT;
-    return 1;
+    // Safe copy into the union array
+    strcpy(rec->data.str, val);
+    rec->type = VALUE_TEXT;
+    return 0;
 }
 
 // Safe display function based strictly on the tag
-void display_tagged_record(const TaggedRecord *record, int index) {
-    printf("Record %d -> ", index);
-    switch (record->type) {
+void print_record(const TaggedRecord *rec) {
+    if (!rec) return;
+    switch (rec->type) {
         case VALUE_INT:
-            printf("[Type: INT] Value: %d\n", record->data.льнай ? record->data.i : record->data.i); // standard access
+            printf("  -> [Active Tag: INT] Value: %d\n", rec->data.i);
             break;
         case VALUE_FLOAT:
-            printf("[Type: FLOAT] Value: %.2f\n", record->data.f);
+            printf("  -> [Active Tag: FLOAT] Value: %.2f\n", rec->data.f);
             break;
         case VALUE_TEXT:
-            printf("[Type: TEXT] Value: \"%s\"\n", record->data.str);
+            printf("  -> [Active Tag: TEXT] Value: \"%s\"\n", rec->data.str);
             break;
-        case VALUE_EMPTY:
         default:
-            printf("[Type: EMPTY] No valid data set.\n");
+            printf("  -> [Error] Invalid or corrupted tag detected (%d). Access blocked.\n", (int)rec->type);
             break;
     }
-}
-
-// Memory Analysis and Demonstration
-void print_memory_analysis() {
-    printf("=== Part 1: Sizes, Alignments, and Offsets ===\n");
-    printf("Size of UnionData:     %zu bytes\n", sizeof(UnionData));
-    printf("Size of StructData:    %zu bytes\n", sizeof(StructData));
-    printf("Size of TaggedRecord:  %zu bytes (Union + Tag enum)\n\n", sizeof(TaggedRecord));
-
-    printf("Array Mass Comparison:\n");
-    printf("100 StructData records: %zu bytes\n", 100 * sizeof(StructData));
-    printf("100 UnionData records:  %zu bytes\n", 100 * sizeof(UnionData));
-    printf("100 TaggedRecord records: %zu bytes\n\n", 100 * sizeof(TaggedRecord));
-
-    StructData sdata;
-    UnionData udata;
-
-    printf("=== Part 2: Member Addresses & Struct Offsets ===\n");
-    printf("Struct member addresses & offsets (using offsetof):\n");
-    printf("  sdata.i   -> Address: %p | Offset: %zu bytes\n", (void*)&sdata.i, offsetof(StructData, i));
-    printf("  sdata.f   -> Address: %p | Offset: %zu bytes\n", (void*)&sdata.f, offsetof(StructData, f));
-    printf("  sdata.str -> Address: %p | Offset: %zu bytes\n\n", (void*)&sdata.str, offsetof(StructData, str));
-
-    printf("Union member addresses (all share the base address):\n");
-    printf("  udata.i   -> Address: %p\n", (void*)&udata.i);
-    printf("  udata.f   -> Address: %p\n", (void*)&udata.f);
-    printf("  udata.str -> Address: %p\n\n", (void*)&udata.str);
 }
 
 int main() {
-    print_memory_analysis();
-
-    printf("=== Part 3: Tagged Record System Demo (5 Mixed Records) ===\n");
-    TaggedRecord records[5];
-
-    // Initialize 5 mixed records
-    set_int_record(&records[0], 10);
-    set_float_record(&records[1], 220.5f);
-    set_text_record(&records[2], "Union Programming");
-    set_int_record(&records[3], 999);
-    set_text_record(&records[4], "Max Len 19 Chrs!!"); // Exactly 17 chars
-
-    for (int i = 0; i < 5; i++) {
-        display_tagged_record(&records[i], i + 1);
-    }
-
-    printf("\n=== Part 4: Edge-Case Testing ===\n");
+    printf("==================================================\n");
+    printf(" PART 1: Sizes, Alignments, and Memory Addresses\n");
+    printf("==================================================\n");
     
-    // Edge case 1: Overlength string rejection
-    printf("Testing overlength string (>19 chars):\n");
-    if (!set_text_record(&records[0], "This string is definitely way too long for the buffer!")) {
-        printf("[Handled] Overlength string successfully rejected.\n");
+    UnionData udata;
+    StructData sdata;
+
+    printf("Size of UnionData : %zu bytes (Alignment: %zu bytes)\n", sizeof(UnionData), _Alignof(UnionData));
+    printf("Size of StructData: %zu bytes (Alignment: %zu bytes)\n\n", sizeof(StructData), _Alignof(StructData));
+
+    printf("Union Member Addresses (All share base address):\n");
+    printf("  udata.i   : %p\n", (void *)&udata.i);
+    printf("  udata.f   : %p\n", (void *)&udata.f);
+    printf("  udata.str : %p\n\n", (void *)&udata.str);
+
+    printf("Structure Member Addresses & Offsets (Using offsetof):\n");
+    printf("  sdata.i   : %p | offset: %2zu bytes\n", (void *)&sdata.i, offsetof(StructData, i));
+    printf("  sdata.f   : %p | offset: %2zu bytes\n", (void *)&sdata.f, offsetof(StructData, f));
+    printf("  sdata.str : %p | offset: %2zu bytes\n\n", (void *)&sdata.str, offsetof(StructData, str));
+
+    printf("==================================================\n");
+    printf(" PART 2: Memory Footprint Comparison (100 Records)\n");
+    printf("==================================================\n");
+    printf("  100 x StructData = %zu bytes\n", sizeof(StructData) * 100);
+    printf("  100 x UnionData  = %zu bytes\n\n", sizeof(UnionData) * 100);
+
+    printf("==================================================\n");
+    printf(" PART 3: Safe Tagged Records & Edge-Case Testing\n");
+    printf("==================================================\n");
+
+    // 1. Store five tagged records of mixed types
+    TaggedRecord records[5];
+    set_int(&records[0], 10);
+    set_float(&records[1], 220.5f);
+    set_text(&records[2], "Union Programming");
+    set_int(&records[3], 42);
+    set_text(&records[4], "Safe Records");
+
+    printf("Displaying 5 Initial Mixed Tagged Records:\n");
+    for (int i = 0; i < 5; i++) {
+        printf("Record %d: ", i + 1);
+        print_record(&records[i]);
     }
+    printf("\n");
 
-    // Edge case 2: Dynamic type switching on a single record
-    printf("\nSwitching Record #1 types dynamically:\n");
-    set_int_record(&records[0], 42);
-    display_tagged_record(&records[0], 1);
+    // Edge Case 1: Maximum-length valid string (19 characters + 1 null terminator)
+    printf("[Edge Case Test 1] Setting record 1 to a 19-character string:\n");
+    char max_valid_str[20] = "1234567890123456789";
+    set_text(&records[0], max_valid_str);
+    printf("  Assigned \"%s\" (strlen: %zu)\n", max_valid_str, strlen(max_valid_str));
+    printf("Record 1: "); print_record(&records[0]);
+    printf("\n");
 
-    set_text_record(&records[0], "Switched to Text");
-    display_tagged_record(&records[0], 1);
+    // Edge Case 2: Overlength string rejection
+    printf("[Edge Case Test 2] Attempting to set an overlength string (25 chars):\n");
+    set_text(&records[0], "ThisStringIsWayTooLongForBuffer");
+    printf("Record 1 remains intact: "); print_record(&records[0]);
+    printf("\n");
 
-    set_float_record(&records[0], 3.14159f);
-    display_tagged_record(&records[0], 1);
+    // Edge Case 3: Dynamic type switching on a single record
+    printf("[Edge Case Test 3] Switching a single record from INT -> TEXT -> FLOAT:\n");
+    TaggedRecord dyn_rec;
+    set_int(&dyn_rec, 500);
+    printf("  Step 1 (Int): "); print_record(&dyn_rec);
+    
+    set_text(&dyn_rec, "Dynamic Text");
+    printf("  Step 2 (Text): "); print_record(&dyn_rec);
+    
+    set_float(&dyn_rec, 99.99f);
+    printf("  Step 3 (Float): "); print_record(&dyn_rec);
+    printf("\n");
+
+    // Edge Case 4: Invalid/corrupted tag handling
+    printf("[Edge Case Test 4] Handling invalid/corrupted tag state:\n");
+    TaggedRecord bad_rec;
+    bad_rec.data.i = 1337;
+    bad_rec.type = (ValueType)99; // Corrupted tag
+    print_record(&bad_rec);
+    printf("\n");
+
+    printf("==================================================\n");
+    printf(" PART 4: Tagged Record Size Analysis\n");
+    printf("==================================================\n");
+    printf("Size of TaggedRecord: %zu bytes\n", sizeof(TaggedRecord));
+    printf("(UnionData size + enum tag size, adjusted for platform struct padding alignment)\n");
 
     return 0;
 }
